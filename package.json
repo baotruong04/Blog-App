@@ -1,0 +1,28 @@
+{
+  "name": "blog-app",
+  "version": "1.0.0",
+  "description": "Blog App using MERN Stack",
+  "scripts": {
+    "test": "npm run test:client && npm run test:server",
+    "test:client": "cd client && npm test -- --watchAll=false",
+    "test:server": "cd server && npm test",
+    "test:watch": "concurrently \"npm run test:client -- --watch\" \"npm run test:server -- --watch\"",
+    "install:all": "npm install && cd client && npm install && cd ../server && npm install",
+    "dev": "concurrently \"cd server && npm start\" \"cd client && npm start\"",
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  },
+  "keywords": [
+    "blog",
+    "mern",
+    "react",
+    "node",
+    "mongodb",
+    "express"
+  ],
+  "author": "Blog App Team",
+  "license": "ISC"
+}
