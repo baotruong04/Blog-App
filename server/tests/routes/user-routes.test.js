@@ -3,13 +3,13 @@ const express = require('express');
 const userRoutes = require('../../routes/user-routes');
 
 // Mock the controller (setup.js already mocks User model and mongoose)
-jest.mock('../../controller/user-contoller', () => ({
+jest.mock('../../controller/user-controller', () => ({
     getAllUser: jest.fn(),
     signUp: jest.fn(),
     logIn: jest.fn()
 }));
 
-const userController = require('../../controller/user-contoller');
+const userController = require('../../controller/user-controller');
 
 // Create express app for testing
 const app = express();

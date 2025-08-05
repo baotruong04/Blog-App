@@ -3,7 +3,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 
 const User = require('../../model/User');
-const { getAllUser, signUp, logIn } = require('../../controller/user-contoller');
+const { getAllUser, signUp, logIn } = require('../../controller/user-controller');
 
 // Create test app
 const app = express();
