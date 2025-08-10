@@ -1,0 +1,37 @@
+# GitLeaks Ignore File
+# Ignore false positives or acceptable patterns
+
+# Ignore test files with dummy secrets
+**/tests/**
+**/test/**
+**/__tests__/**
+**/*.test.js
+**/*.spec.js
+
+# Ignore documentation and configuration examples
+**/docs/**
+**/examples/**
+README.md
+*.md
+
+# Ignore dependency files
+package-lock.json
+yarn.lock
+node_modules/**
+
+# Ignore build artifacts
+dist/**
+build/**
+.next/**
+
+# Ignore specific patterns (add specific commit hashes or file patterns if needed)
+# Example configurations and development files
+server/.env.example
+**/*.env.example
+
+# CSS integrity hashes (false positives)
+**/index.html
+
+# MongoDB connection strings in config examples
+docker-compose.yaml
+server/config/db.js

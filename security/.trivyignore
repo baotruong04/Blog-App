@@ -1,0 +1,21 @@
+# Trivy Ignore File
+# Ignore specific vulnerabilities that are false positives or acceptable risks
+
+# Example: Ignore low severity vulnerabilities in development
+# CVE-2023-12345
+
+# Ignore vulnerabilities in test dependencies
+**/node_modules/**/test/**
+**/node_modules/**/tests/**
+
+# Ignore vulnerabilities in development dependencies
+**/node_modules/**/@types/**
+**/node_modules/**/eslint/**
+**/node_modules/**/jest/**
+
+# Ignore specific file types that don't affect runtime
+*.md
+*.txt
+*.json
+package-lock.json
+yarn.lock

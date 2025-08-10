@@ -1,0 +1,52 @@
+# Trivy Configuration File
+format: table
+exit-code: 1
+severity: HIGH,CRITICAL
+ignore-unfixed: false
+skip-update: false
+timeout: 10m0s
+
+# Scan settings
+scan:
+  skip-dirs:
+    - "node_modules"
+    - ".git"
+    - "tests"
+    - "__tests__"
+    - ".vscode"
+  skip-files:
+    - "*.md"
+    - "*.txt"
+    - "package-lock.json"
+    - "yarn.lock"
+
+# Vulnerability settings  
+vulnerability:
+  type:
+    - os
+    - library
+  scanners:
+    - vuln
+    - secret
+    - config
+
+# Secret scanning
+secret:
+  skip-dirs:
+    - "node_modules"
+    - ".git"
+  skip-files:
+    - "*.md"
+    - "*.txt"
+
+# Misconfiguration scanning
+config:
+  skip-dirs:
+    - "node_modules"
+    - ".git"
+  file-patterns:
+    dockerfile:
+      - "Dockerfile*"
+    kubernetes:
+      - "*.yaml"
+      - "*.yml"
