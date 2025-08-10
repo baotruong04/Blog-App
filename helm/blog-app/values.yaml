@@ -1,0 +1,234 @@
+# Default values for blog-app
+# This is a YAML-formatted file.
+
+# Global settings
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+
+# Common labels
+commonLabels:
+  app: blog-app
+  version: v1.0.0
+
+# Namespace configuration
+namespace:
+  create: true
+  name: blog-app
+  labels:
+    name: blog-app
+    environment: production
+    managed-by: helm
+
+# Server configuration
+server:
+  name: blog-server
+  replicaCount: 2
+  
+  image:
+    repository: blog-server
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+    name: http
+    
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+      
+  # Health probes
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+    
+  readinessProbe:
+    httpGet:
+      path: /api/ready
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    successThreshold: 1
+    failureThreshold: 3
+    
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1001
+    fsGroup: 1001
+    
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+      
+  # Environment variables
+  env:
+    NODE_ENV: production
+    PORT: 5000
+    
+  # Rolling update strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+# Client configuration  
+client:
+  name: blog-client
+  replicaCount: 2
+  
+  image:
+    repository: blog-client
+    pullPolicy: IfNotPresent
+    tag: "latest"
+    
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+    name: http
+    
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+      
+  # Health probes
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
+    
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    successThreshold: 1
+    failureThreshold: 3
+    
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    fsGroup: 101
+    
+  podSecurityContext:
+    seccompProfile:
+      type: RuntimeDefault
+      
+  # Rolling update strategy
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+# MongoDB configuration (external)
+mongodb:
+  enabled: false
+  # External MongoDB URI will be provided via secrets
+  
+# ConfigMap data
+config:
+  # Server configuration
+  server:
+    cors_origin: "*"
+    api_prefix: "/api"
+    log_level: "info"
+    
+  # Client configuration  
+  client:
+    api_url: "http://blog-server:5000"
+    app_name: "Blog App"
+    theme: "light"
+
+# Secrets (base64 encoded values)
+secrets:
+  mongodb:
+    uri: "bW9uZ29kYjovL21vbmdvOjI3MDE3L0Jsb2dBcHA="  # base64: mongodb://mongo:27017/BlogApp
+  jwt:
+    secret: "eW91ci1qd3Qtc2VjcmV0LWtleQ=="  # base64: your-jwt-secret-key
+
+# Ingress configuration
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: blog-app.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: blog-server
+              port:
+                number: 5000
+        - path: /
+          pathType: Prefix  
+          backend:
+            service:
+              name: blog-client
+              port:
+                number: 80
+  tls:
+    - secretName: blog-app-tls
+      hosts:
+        - blog-app.local
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: "blog-app"
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Network Policy
+networkPolicy:
+  enabled: true
+  ingress:
+    - from: []
+  egress:
+    - to: []

@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.client.name }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+    component: client
+    tier: frontend
+spec:
+  replicas: {{ .Values.client.replicaCount }}
+  strategy:
+    {{- toYaml .Values.client.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "blog-app.selectorLabels" . | nindent 6 }}
+      component: client
+  template:
+    metadata:
+      labels:
+        {{- include "blog-app.selectorLabels" . | nindent 8 }}
+        component: client
+        tier: frontend
+      annotations:
+        prometheus.io/scrape: "false"
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "blog-app.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.client.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Values.client.name }}
+          image: "{{ .Values.client.image.repository }}:{{ .Values.client.image.tag }}"
+          imagePullPolicy: {{ .Values.client.image.pullPolicy }}
+          ports:
+            - name: {{ .Values.client.service.name }}
+              containerPort: {{ .Values.client.service.targetPort }}
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "blog-app.fullname" . }}-config
+          {{- with .Values.client.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.client.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.client.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.client.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: cache-volume
+              mountPath: /var/cache/nginx
+            - name: run-volume
+              mountPath: /var/run
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: cache-volume
+          emptyDir: {}
+        - name: run-volume
+          emptyDir: {}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

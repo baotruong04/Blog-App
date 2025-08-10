@@ -1,0 +1,158 @@
+# Production environment values
+# Extends values-custom.yaml
+
+# Production namespace
+namespace:
+  name: blog-app
+  labels:
+    name: blog-app
+    environment: production
+    managed-by: helm
+
+# Production-optimized resources
+server:
+  replicaCount: 3
+  
+  image:
+    repository: "your-registry.com/blog-server"
+    tag: "v1.0.0"
+    pullPolicy: Always
+    
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+      
+  # Conservative health checks for production
+  livenessProbe:
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    timeoutSeconds: 10
+    failureThreshold: 5
+    
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    
+  env:
+    NODE_ENV: production
+    LOG_LEVEL: warn
+
+client:
+  replicaCount: 3
+  
+  image:
+    repository: "your-registry.com/blog-client"
+    tag: "v1.0.0"
+    pullPolicy: Always
+    
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+      
+  livenessProbe:
+    initialDelaySeconds: 60
+    periodSeconds: 30
+    
+  readinessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+
+# Production configuration
+config:
+  server:
+    cors_origin: "https://yourdomain.com"
+    log_level: "warn"
+    
+  client:
+    api_url: "https://api.yourdomain.com"
+    app_name: "Blog App - Production"
+    theme: "light"
+
+# Production ingress with SSL
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+  hosts:
+    - host: yourdomain.com
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: blog-server
+              port:
+                number: 5000
+        - path: /
+          pathType: Prefix  
+          backend:
+            service:
+              name: blog-client
+              port:
+                number: 80
+  tls:
+    - secretName: blog-app-prod-tls
+      hosts:
+        - yourdomain.com
+
+# Enable autoscaling in production
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Enable network policies for security
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+  egress:
+    - to: []
+
+# Pod Disruption Budget for high availability
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# Production secrets (should be managed externally)
+secrets:
+  mongodb:
+    uri: ""  # Should be injected via external secret management
+  jwt:
+    secret: ""  # Should be injected via external secret management
+
+# Image pull secrets for private registry
+global:
+  imagePullSecrets:
+    - name: regcred
+
+# Resource quotas for production namespace
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8" 
+    limits.memory: 16Gi
+    persistentvolumeclaims: "10"

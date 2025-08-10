@@ -1,0 +1,112 @@
+# Development environment values
+# Extends values-custom.yaml
+
+# Namespace for development
+namespace:
+  name: blog-app-dev
+  labels:
+    name: blog-app-dev
+    environment: development
+    managed-by: helm
+
+# Lower resource requirements for development
+server:
+  replicaCount: 1
+  
+  image:
+    tag: "dev"
+    
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+      
+  # More frequent health checks for development
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 3
+    
+  env:
+    NODE_ENV: development
+    LOG_LEVEL: debug
+
+client:
+  replicaCount: 1
+  
+  image:
+    tag: "dev"
+    
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+      
+  livenessProbe:
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    
+  readinessProbe:
+    initialDelaySeconds: 5
+    periodSeconds: 3
+
+# Development configuration
+config:
+  server:
+    cors_origin: "http://localhost:3000"
+    log_level: "debug"
+    
+  client:
+    api_url: "http://blog-server-dev:5000"
+    theme: "dark"
+
+# Development ingress (simpler)
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+  hosts:
+    - host: blog-app-dev.local
+      paths:
+        - path: /api
+          pathType: Prefix
+          backend:
+            service:
+              name: blog-server
+              port:
+                number: 5000
+        - path: /
+          pathType: Prefix  
+          backend:
+            service:
+              name: blog-client
+              port:
+                number: 80
+  # No TLS for development
+  tls: []
+
+# Disable autoscaling in development
+autoscaling:
+  enabled: false
+
+# Disable network policy for easier debugging
+networkPolicy:
+  enabled: false
+
+# Development secrets (less secure for dev)
+secrets:
+  mongodb:
+    uri: "bW9uZ29kYjovL21vbmdvZGItZGV2OjI3MDE3L0Jsb2dBcHA="  # base64: mongodb://mongodb-dev:27017/BlogApp
+  jwt:
+    secret: "ZGV2LWp3dC1zZWNyZXQ="  # base64: dev-jwt-secret

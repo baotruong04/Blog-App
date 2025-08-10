@@ -1,0 +1,388 @@
+---
+# Source: blog-app/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: blog-app
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken:
+---
+# Source: blog-app/templates/secrets.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: blog-app-secrets
+  namespace: blog-app-dev
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    component: secrets
+type: Opaque
+data:
+  MONGO_URI: bW9uZ29kYjovL21vbmdvZGItZGV2OjI3MDE3L0Jsb2dBcHA=
+  JWT_SECRET: ZGV2LWp3dC1zZWNyZXQ=
+---
+# Source: blog-app/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blog-app-config
+  namespace: blog-app-dev
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    component: config
+data:
+  # Server configuration
+  SERVER_CORS_ORIGIN: "http://localhost:3000"
+  SERVER_API_PREFIX: "/api"
+  SERVER_LOG_LEVEL: "debug"
+  
+  # Client configuration
+  CLIENT_API_URL: "http://blog-server-dev:5000"
+  CLIENT_APP_NAME: "Blog App"
+  CLIENT_THEME: "dark"
+---
+# Source: blog-app/templates/client-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: blog-client
+  namespace: blog-app-dev
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    component: client
+    tier: frontend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    component: client
+---
+# Source: blog-app/templates/server-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: blog-server
+  namespace: blog-app-dev
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    component: server
+    tier: backend
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    component: server
+---
+# Source: blog-app/templates/client-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blog-client
+  namespace: blog-app-dev
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    component: client
+    tier: frontend
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: blog-app
+      app.kubernetes.io/instance: blog-app
+      component: client
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: blog-app
+        app.kubernetes.io/instance: blog-app
+        component: client
+        tier: frontend
+      annotations:
+        prometheus.io/scrape: "false"
+        checksum/config: fec14f7d00898a8936650b80ac8aed7f06bc01a334e99285723830d474072330
+    spec:
+      serviceAccountName: blog-app
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: blog-client
+          image: "blog-client:dev"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: blog-app-config
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            successThreshold: 1
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 100m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          securityContext:
+            fsGroup: 101
+            runAsNonRoot: true
+            runAsUser: 101
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: cache-volume
+              mountPath: /var/cache/nginx
+            - name: run-volume
+              mountPath: /var/run
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: cache-volume
+          emptyDir: {}
+        - name: run-volume
+          emptyDir: {}
+---
+# Source: blog-app/templates/server-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blog-server
+  namespace: blog-app-dev
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    component: server
+    tier: backend
+spec:
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: blog-app
+      app.kubernetes.io/instance: blog-app
+      component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: blog-app
+        app.kubernetes.io/instance: blog-app
+        component: server
+        tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/api/metrics"
+        checksum/config: fec14f7d00898a8936650b80ac8aed7f06bc01a334e99285723830d474072330
+        checksum/secret: 841de3ce5f37aa253c8feb6d70a2332b93b5f2c3bc59f043125f5202187373e5
+    spec:
+      serviceAccountName: blog-app
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: blog-server
+          image: "blog-server:dev"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "development"
+            - name: PORT
+              value: "5000"
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: blog-app-secrets
+                  key: MONGO_URI
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: blog-app-secrets
+                  key: JWT_SECRET
+          envFrom:
+            - configMapRef:
+                name: blog-app-config
+          livenessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            successThreshold: 1
+            timeoutSeconds: 5
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /api/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 3
+            successThreshold: 1
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            fsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: cache-volume
+              mountPath: /app/cache
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: cache-volume
+          emptyDir: {}
+---
+# Source: blog-app/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: blog-app-ingress
+  namespace: blog-app-dev
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+    component: ingress
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: "blog-app-dev.local"
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: blog-server
+                port:
+                  number: 5000
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: blog-client
+                port:
+                  number: 80
+---
+# Source: blog-app/templates/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: blog-app-dev
+  labels:
+    environment: development
+    managed-by: helm
+    name: blog-app-dev
+    app: blog-app
+    version: v1.0.0
+  annotations:
+    helm.sh/hook: pre-install
+    helm.sh/hook-weight: "-10"
+---
+# Source: blog-app/templates/tests/test-connection.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "blog-app-test-connection"
+  namespace: blog-app-dev
+  labels:
+    helm.sh/chart: blog-app-0.1.0
+    app.kubernetes.io/name: blog-app
+    app.kubernetes.io/instance: blog-app
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      command: ['wget']
+      args: ['blog-server:5000/api/health']
+  restartPolicy: Never

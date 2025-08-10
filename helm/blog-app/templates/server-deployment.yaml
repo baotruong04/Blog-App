@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Values.server.name }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+    component: server
+    tier: backend
+spec:
+  replicas: {{ .Values.server.replicaCount }}
+  strategy:
+    {{- toYaml .Values.server.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "blog-app.selectorLabels" . | nindent 6 }}
+      component: server
+  template:
+    metadata:
+      labels:
+        {{- include "blog-app.selectorLabels" . | nindent 8 }}
+        component: server
+        tier: backend
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.server.service.port }}"
+        prometheus.io/path: "/api/metrics"
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secrets.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "blog-app.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.server.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Values.server.name }}
+          image: "{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          ports:
+            - name: {{ .Values.server.service.name }}
+              containerPort: {{ .Values.server.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.server.env.NODE_ENV | quote }}
+            - name: PORT
+              value: {{ .Values.server.env.PORT | quote }}
+            - name: MONGO_URI
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "blog-app.fullname" . }}-secrets
+                  key: MONGO_URI
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "blog-app.fullname" . }}-secrets
+                  key: JWT_SECRET
+          envFrom:
+            - configMapRef:
+                name: {{ include "blog-app.fullname" . }}-config
+          {{- with .Values.server.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.server.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.server.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: cache-volume
+              mountPath: /app/cache
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        - name: cache-volume
+          emptyDir: {}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

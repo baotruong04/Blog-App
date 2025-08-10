@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "blog-app.fullname" . }}-config
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+    component: config
+data:
+  # Server configuration
+  SERVER_CORS_ORIGIN: {{ .Values.config.server.cors_origin | quote }}
+  SERVER_API_PREFIX: {{ .Values.config.server.api_prefix | quote }}
+  SERVER_LOG_LEVEL: {{ .Values.config.server.log_level | quote }}
+  
+  # Client configuration
+  CLIENT_API_URL: {{ .Values.config.client.api_url | quote }}
+  CLIENT_APP_NAME: {{ .Values.config.client.app_name | quote }}
+  CLIENT_THEME: {{ .Values.config.client.theme | quote }}
