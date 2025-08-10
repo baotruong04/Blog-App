@@ -1,0 +1,22 @@
+# Development environment variables
+variables:
+  # Environment specific
+  environmentName: 'development'
+  kubernetesNamespace: 'blog-app-dev'
+  helmValuesFile: 'values-dev.yaml'
+  
+  # Docker image tags
+  serverImageTag: 'dev-$(Build.BuildNumber)'
+  clientImageTag: 'dev-$(Build.BuildNumber)'
+  
+  # Resource configuration (lower for dev)
+  serverReplicas: 1
+  clientReplicas: 1
+  
+  # Security scanning (less strict for dev)
+  securityScanFailBuild: false
+  skipSecurityScan: false
+  
+  # Monitoring
+  enableMetrics: true
+  logLevel: 'debug'

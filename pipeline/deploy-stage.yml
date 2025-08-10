@@ -1,0 +1,205 @@
+# Deploy stage template using Helm
+parameters:
+  - name: environmentName
+    type: string
+  - name: kubernetesNamespace
+    type: string
+  - name: helmValuesFile
+    type: string
+
+jobs:
+  - deployment: DeployToKubernetes
+    displayName: 'Deploy to Kubernetes (${{ parameters.environmentName }})'
+    environment: 'blog-app-${{ parameters.environmentName }}'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            # Download build artifacts
+            - download: current
+              artifact: '$(artifactName)'
+              displayName: 'Download Build Artifacts'
+              
+            # Install Helm
+            - task: HelmInstaller@1
+              displayName: 'Install Helm'
+              inputs:
+                helmVersionToInstall: '$(helmVersion)'
+                
+            # Setup Kubernetes connection
+            - task: Kubernetes@1
+              displayName: 'kubectl login'
+              inputs:
+                connectionType: 'Kubernetes Service Connection'
+                kubernetesServiceEndpoint: '$(kubernetesServiceConnection)'
+                command: 'login'
+                
+            # Create namespace if it doesn't exist
+            - task: Kubernetes@1
+              displayName: 'Create Namespace'
+              inputs:
+                connectionType: 'Kubernetes Service Connection'
+                kubernetesServiceEndpoint: '$(kubernetesServiceConnection)'
+                command: 'apply'
+                useConfigurationFile: true
+                inline: |
+                  apiVersion: v1
+                  kind: Namespace
+                  metadata:
+                    name: ${{ parameters.kubernetesNamespace }}
+                    labels:
+                      name: ${{ parameters.kubernetesNamespace }}
+                      environment: ${{ parameters.environmentName }}
+                      managed-by: azure-pipelines
+                
+            # Lint Helm chart
+            - task: Bash@3
+              displayName: 'Helm Lint'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  echo "🔍 Linting Helm chart..."
+                  helm lint $(helmChartPath) --values $(helmChartPath)/${{ parameters.helmValuesFile }}
+                  
+            # Validate Helm templates
+            - task: Bash@3
+              displayName: 'Validate Helm Templates'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  echo "✅ Validating Helm templates..."
+                  helm template $(helmReleaseName) $(helmChartPath) \
+                    --values $(helmChartPath)/${{ parameters.helmValuesFile }} \
+                    --namespace ${{ parameters.kubernetesNamespace }} \
+                    --dry-run --validate
+                    
+            # Deploy with Helm (with rollback on failure)
+            - task: Bash@3
+              displayName: 'Deploy with Helm'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  echo "🚀 Deploying to Kubernetes with Helm..."
+                  
+                  # Set image tags dynamically
+                  SERVER_TAG="${{ parameters.environmentName }}-$(Build.BuildNumber)"
+                  CLIENT_TAG="${{ parameters.environmentName }}-$(Build.BuildNumber)"
+                  
+                  echo "Server image tag: $SERVER_TAG"
+                  echo "Client image tag: $CLIENT_TAG"
+                  
+                  # Perform Helm upgrade/install
+                  helm upgrade --install $(helmReleaseName) $(helmChartPath) \
+                    --namespace ${{ parameters.kubernetesNamespace }} \
+                    --values $(helmChartPath)/${{ parameters.helmValuesFile }} \
+                    --set server.image.repository=$(containerRegistry)/$(serverImageRepository) \
+                    --set server.image.tag=$SERVER_TAG \
+                    --set client.image.repository=$(containerRegistry)/$(clientImageRepository) \
+                    --set client.image.tag=$CLIENT_TAG \
+                    --set namespace.name=${{ parameters.kubernetesNamespace }} \
+                    --timeout 10m \
+                    --wait \
+                    --atomic
+                    
+                  echo "✅ Deployment completed successfully"
+                  
+            # Verify deployment
+            - task: Bash@3
+              displayName: 'Verify Deployment'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  echo "🔍 Verifying deployment..."
+                  
+                  # Check Helm release status
+                  helm status $(helmReleaseName) --namespace ${{ parameters.kubernetesNamespace }}
+                  
+                  # Check pod status
+                  kubectl get pods --namespace ${{ parameters.kubernetesNamespace }} -l app.kubernetes.io/instance=$(helmReleaseName)
+                  
+                  # Check services
+                  kubectl get services --namespace ${{ parameters.kubernetesNamespace }} -l app.kubernetes.io/instance=$(helmReleaseName)
+                  
+                  # Wait for pods to be ready
+                  kubectl wait --for=condition=ready pod \
+                    --namespace ${{ parameters.kubernetesNamespace }} \
+                    -l app.kubernetes.io/instance=$(helmReleaseName) \
+                    --timeout=300s
+                    
+                  echo "✅ All pods are ready"
+                  
+            # Run health checks
+            - task: Bash@3
+              displayName: 'Health Checks'
+              inputs:
+                targetType: 'inline'
+                script: |
+                  echo "🏥 Running health checks..."
+                  
+                  # Get service URLs
+                  SERVER_URL=$(kubectl get service blog-server --namespace ${{ parameters.kubernetesNamespace }} -o jsonpath='{.spec.clusterIP}:{.spec.ports[0].port}')
+                  
+                  echo "Testing server health endpoint..."
+                  kubectl run curl-test --image=curlimages/curl:latest --rm -i --restart=Never -- \
+                    curl -f http://$SERVER_URL/api/health || echo "Health check failed"
+                    
+                  echo "✅ Health checks completed"
+                  
+            # Cleanup on failure
+            - task: Bash@3
+              displayName: 'Rollback on Failure'
+              condition: failed()
+              inputs:
+                targetType: 'inline'
+                script: |
+                  echo "❌ Deployment failed, initiating rollback..."
+                  
+                  # Rollback to previous release
+                  helm rollback $(helmReleaseName) --namespace ${{ parameters.kubernetesNamespace }}
+                  
+                  echo "🔄 Rollback completed"
+                  
+            # Generate deployment report
+            - task: Bash@3
+              displayName: 'Generate Deployment Report'
+              condition: always()
+              inputs:
+                targetType: 'inline'
+                script: |
+                  echo "📊 Generating deployment report..."
+                  
+                  REPORT_FILE="deployment-report-${{ parameters.environmentName }}.md"
+                  
+                  cat > $REPORT_FILE << EOF
+                  # Deployment Report - ${{ parameters.environmentName }}
+                  
+                  **Date:** $(date)
+                  **Build:** $(Build.BuildNumber)
+                  **Environment:** ${{ parameters.environmentName }}
+                  **Namespace:** ${{ parameters.kubernetesNamespace }}
+                  
+                  ## Images Deployed
+                  - Server: $(containerRegistry)/$(serverImageRepository):${{ parameters.environmentName }}-$(Build.BuildNumber)
+                  - Client: $(containerRegistry)/$(clientImageRepository):${{ parameters.environmentName }}-$(Build.BuildNumber)
+                  
+                  ## Helm Release
+                  \`\`\`
+                  $(helm status $(helmReleaseName) --namespace ${{ parameters.kubernetesNamespace }})
+                  \`\`\`
+                  
+                  ## Pod Status
+                  \`\`\`
+                  $(kubectl get pods --namespace ${{ parameters.kubernetesNamespace }} -l app.kubernetes.io/instance=$(helmReleaseName))
+                  \`\`\`
+                  EOF
+                  
+                  # Copy to artifacts
+                  cp $REPORT_FILE $(Pipeline.Workspace)/
+                  
+            # Publish deployment artifacts
+            - task: PublishBuildArtifacts@1
+              displayName: 'Publish Deployment Report'
+              condition: always()
+              inputs:
+                pathToPublish: '$(Pipeline.Workspace)/deployment-report-${{ parameters.environmentName }}.md'
+                artifactName: 'deployment-reports'

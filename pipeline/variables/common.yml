@@ -1,0 +1,42 @@
+# Common variables for all environments
+variables:
+  # Docker registry configuration
+  dockerRegistryServiceConnection: 'aws-ecr-connection'
+  containerRegistry: '$(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com'
+  
+  # Repository information
+  serverImageRepository: 'blog-app/server'
+  clientImageRepository: 'blog-app/client'
+  
+  # AWS configuration
+  awsRegion: 'us-west-2'
+  awsAccountId: '$(AWS_ACCOUNT_ID)' # Set in Azure DevOps variable groups
+  
+  # EKS configuration
+  eksClusterName: 'blog-app-cluster'
+  kubernetesServiceConnection: 'eks-cluster-connection'
+  
+  # Helm configuration
+  helmVersion: '3.12.0'
+  helmChartPath: 'helm/blog-app'
+  helmReleaseName: 'blog-app'
+  
+  # Security scanning
+  trivyVersion: '0.44.0'
+  gitleaksVersion: '8.17.0'
+  
+  # Build configuration
+  dockerBuildContext: '.'
+  serverDockerfile: 'server/Dockerfile'
+  clientDockerfile: 'client/Dockerfile'
+  
+  # Node.js configuration
+  nodeVersion: '18.x'
+  
+  # Security and compliance
+  securityScanFailBuild: true
+  vulnerabilitySeverity: 'HIGH,CRITICAL'
+  
+  # Artifact configuration
+  artifactName: 'build-artifacts'
+  securityReportName: 'security-reports'

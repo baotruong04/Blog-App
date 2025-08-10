@@ -1,0 +1,184 @@
+# Build stage template with security scanning
+parameters:
+  - name: environmentName
+    type: string
+    default: 'development'
+
+jobs:
+  - job: SecurityScan
+    displayName: 'Security Scanning'
+    steps:
+      # Checkout code
+      - checkout: self
+        displayName: 'Checkout Source Code'
+        
+      # Install security tools
+      - task: Bash@3
+        displayName: 'Install Security Tools'
+        inputs:
+          targetType: 'inline'
+          script: |
+            # Install Trivy
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v$(trivyVersion)
+            
+            # Install GitLeaks  
+            curl -sSfL https://github.com/zricethezav/gitleaks/releases/download/v$(gitleaksVersion)/gitleaks_$(gitleaksVersion)_linux_x64.tar.gz | tar xzf - -C /usr/local/bin gitleaks
+            
+            # Verify installations
+            trivy version
+            gitleaks version
+            
+      # Run GitLeaks secret scan
+      - task: Bash@3
+        displayName: 'GitLeaks Secret Scan'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "🔐 Running GitLeaks secret detection..."
+            ./scripts/dev-security-scan.sh || exit_code=$?
+            
+            # Copy reports to staging directory
+            mkdir -p $(Build.ArtifactStagingDirectory)/security-reports
+            cp -r reports/* $(Build.ArtifactStagingDirectory)/security-reports/ || true
+            
+            if [ "$exit_code" != "0" ] && [ "$(securityScanFailBuild)" == "true" ]; then
+              echo "❌ Security scan failed and securityScanFailBuild is enabled"
+              exit 1
+            fi
+            
+      # Run Trivy vulnerability scan
+      - task: Bash@3
+        displayName: 'Trivy Vulnerability Scan'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "🔍 Running Trivy vulnerability scanning..."
+            ./scripts/scan-trivy.sh . || exit_code=$?
+            
+            # Generate SARIF report for Azure DevOps
+            trivy fs --format sarif --output $(Build.ArtifactStagingDirectory)/security-reports/trivy-results.sarif .
+            
+            if [ "$exit_code" != "0" ] && [ "$(securityScanFailBuild)" == "true" ]; then
+              echo "❌ Trivy scan failed and securityScanFailBuild is enabled"  
+              exit 1
+            fi
+            
+      # Publish security scan results
+      - task: PublishTestResults@2
+        displayName: 'Publish Security Scan Results'
+        condition: always()
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '$(Build.ArtifactStagingDirectory)/security-reports/*.xml'
+          testRunTitle: 'Security Scan Results'
+          
+      # Publish security artifacts
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Security Reports'
+        condition: always()
+        inputs:
+          pathToPublish: '$(Build.ArtifactStagingDirectory)/security-reports'
+          artifactName: '$(securityReportName)'
+
+  - job: BuildImages
+    displayName: 'Build Docker Images'
+    dependsOn: SecurityScan
+    condition: succeeded()
+    steps:
+      # Checkout code
+      - checkout: self
+        displayName: 'Checkout Source Code'
+        
+      # Setup Node.js
+      - task: NodeTool@0
+        displayName: 'Setup Node.js'
+        inputs:
+          versionSpec: '$(nodeVersion)'
+          
+      # Install and test server dependencies
+      - task: Npm@1
+        displayName: 'Install Server Dependencies'
+        inputs:
+          command: 'ci'
+          workingDir: 'server'
+          
+      - task: Npm@1
+        displayName: 'Run Server Tests'
+        inputs:
+          command: 'custom'
+          customCommand: 'test'
+          workingDir: 'server'
+          
+      # Install and test client dependencies  
+      - task: Npm@1
+        displayName: 'Install Client Dependencies'
+        inputs:
+          command: 'ci'
+          workingDir: 'client'
+          
+      - task: Npm@1
+        displayName: 'Build Client'
+        inputs:
+          command: 'custom'
+          customCommand: 'run build'
+          workingDir: 'client'
+          
+      - task: Npm@1
+        displayName: 'Run Client Tests'
+        inputs:
+          command: 'custom'
+          customCommand: 'test -- --coverage --watchAll=false'
+          workingDir: 'client'
+          
+      # Docker build and push server
+      - task: Docker@2
+        displayName: 'Build and Push Server Image'
+        inputs:
+          containerRegistry: '$(dockerRegistryServiceConnection)'
+          repository: '$(serverImageRepository)'
+          command: 'buildAndPush'
+          Dockerfile: '$(serverDockerfile)'
+          buildContext: '$(dockerBuildContext)'
+          tags: |
+            ${{ parameters.environmentName }}-$(Build.BuildNumber)
+            ${{ parameters.environmentName }}-latest
+            
+      # Docker build and push client
+      - task: Docker@2
+        displayName: 'Build and Push Client Image'
+        inputs:
+          containerRegistry: '$(dockerRegistryServiceConnection)'
+          repository: '$(clientImageRepository)'
+          command: 'buildAndPush'
+          Dockerfile: '$(clientDockerfile)'
+          buildContext: '$(dockerBuildContext)'
+          tags: |
+            ${{ parameters.environmentName }}-$(Build.BuildNumber)
+            ${{ parameters.environmentName }}-latest
+            
+      # Scan Docker images with Trivy
+      - task: Bash@3
+        displayName: 'Scan Docker Images'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "🐳 Scanning Docker images..."
+            
+            # Scan server image
+            trivy image --severity $(vulnerabilitySeverity) \
+              --format table \
+              --output $(Build.ArtifactStagingDirectory)/trivy-server-image.txt \
+              $(containerRegistry)/$(serverImageRepository):${{ parameters.environmentName }}-$(Build.BuildNumber)
+              
+            # Scan client image  
+            trivy image --severity $(vulnerabilitySeverity) \
+              --format table \
+              --output $(Build.ArtifactStagingDirectory)/trivy-client-image.txt \
+              $(containerRegistry)/$(clientImageRepository):${{ parameters.environmentName }}-$(Build.BuildNumber)
+              
+      # Publish build artifacts
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Build Artifacts'
+        inputs:
+          pathToPublish: '$(Build.ArtifactStagingDirectory)'
+          artifactName: '$(artifactName)'

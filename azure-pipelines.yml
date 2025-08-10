@@ -1,0 +1,80 @@
+# Azure DevOps Pipeline for Secure CI/CD Blog Application
+# Triggers on main branch and pull requests
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    exclude:
+      - README.md
+      - docs/**
+      - .gitignore
+
+pr:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    exclude:
+      - README.md
+      - docs/**
+      - .gitignore
+
+# Pipeline variables
+variables:
+  - template: pipeline/variables/common.yml
+  - name: buildId
+    value: $(Build.BuildId)
+  - name: buildNumber  
+    value: $(Build.BuildNumber)
+  - name: sourceVersion
+    value: $(Build.SourceVersion)
+
+# Agent pool configuration
+pool:
+  name: 'eks-agents' # Self-hosted agents running on EKS
+  # vmImage: 'ubuntu-latest' # Fallback to Microsoft-hosted agents
+
+# Pipeline stages
+stages:
+  # Stage 1: Build and Security Scanning
+  - stage: BuildAndSecurity
+    displayName: 'Build & Security Scan'
+    jobs:
+      - template: pipeline/build-stage.yml
+        parameters:
+          environmentName: 'development'
+          
+  # Stage 2: Deploy to Development (auto on develop branch)
+  - stage: DeployDevelopment
+    displayName: 'Deploy to Development'
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+    dependsOn: BuildAndSecurity
+    jobs:
+      - template: pipeline/deploy-stage.yml
+        parameters:
+          environmentName: 'development'
+          kubernetesNamespace: 'blog-app-dev'
+          helmValuesFile: 'values-dev.yaml'
+          
+  # Stage 3: Deploy to Production (manual approval on main branch)  
+  - stage: DeployProduction
+    displayName: 'Deploy to Production'
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    dependsOn: BuildAndSecurity
+    jobs:
+      - deployment: DeployToProduction
+        displayName: 'Deploy to Production Environment'
+        environment: 'blog-app-production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: pipeline/deploy-stage.yml
+                  parameters:
+                    environmentName: 'production'
+                    kubernetesNamespace: 'blog-app'
+                    helmValuesFile: 'values-prod.yaml'

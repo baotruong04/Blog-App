@@ -1,0 +1,27 @@
+# Production environment variables
+variables:
+  # Environment specific
+  environmentName: 'production'
+  kubernetesNamespace: 'blog-app'
+  helmValuesFile: 'values-prod.yaml'
+  
+  # Docker image tags
+  serverImageTag: 'v$(Build.BuildNumber)'
+  clientImageTag: 'v$(Build.BuildNumber)'
+  
+  # Resource configuration (higher for prod)
+  serverReplicas: 3
+  clientReplicas: 3
+  
+  # Security scanning (strict for prod)
+  securityScanFailBuild: true
+  skipSecurityScan: false
+  vulnerabilitySeverity: 'MEDIUM,HIGH,CRITICAL'
+  
+  # Monitoring
+  enableMetrics: true
+  logLevel: 'warn'
+  
+  # Backup and rollback
+  enableBackup: true
+  rollbackOnFailure: true

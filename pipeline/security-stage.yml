@@ -1,0 +1,259 @@
+# Security-focused stage template for enhanced security scanning
+parameters:
+  - name: environmentName
+    type: string
+    default: 'development'
+  - name: securityScanLevel
+    type: string
+    default: 'standard'
+    values:
+      - 'basic'
+      - 'standard' 
+      - 'comprehensive'
+
+jobs:
+  - job: ComprehensiveSecurity
+    displayName: 'Comprehensive Security Analysis'
+    steps:
+      # Checkout with security scanning
+      - checkout: self
+        displayName: 'Secure Checkout'
+        clean: true
+        
+      # Install security tools with specific versions
+      - task: Bash@3
+        displayName: 'Install Security Arsenal'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "🛡️ Installing security tools..."
+            
+            # Create tools directory
+            mkdir -p ~/.local/bin
+            export PATH="$HOME/.local/bin:$PATH"
+            
+            # Install Trivy with specific version
+            curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | \
+              sh -s -- -b ~/.local/bin v$(trivyVersion)
+              
+            # Install GitLeaks
+            curl -sSfL https://github.com/zricethezav/gitleaks/releases/download/v$(gitleaksVersion)/gitleaks_$(gitleaksVersion)_linux_x64.tar.gz | \
+              tar xzf - -C ~/.local/bin gitleaks
+              
+            # Install additional security tools for comprehensive scan
+            if [ "${{ parameters.securityScanLevel }}" == "comprehensive" ]; then
+              # Install Semgrep for SAST
+              python3 -m pip install semgrep
+              
+              # Install Safety for Python dependency check
+              python3 -m pip install safety
+              
+              # Install npm audit for Node.js
+              npm install -g npm-audit-ci-wrapper
+            fi
+            
+            # Verify installations
+            trivy version
+            gitleaks version
+            
+      # Multi-layer secret detection
+      - task: Bash@3
+        displayName: 'Advanced Secret Detection'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "🔐 Advanced secret detection..."
+            
+            # Run GitLeaks with multiple detection modes
+            ~/.local/bin/gitleaks detect \
+              --source=. \
+              --config=./security/gitleaks-config.toml \
+              --report-format=json \
+              --report-path=$(Build.ArtifactStagingDirectory)/gitleaks-detailed.json \
+              --verbose || GITLEAKS_EXIT=$?
+              
+            # Run Trivy secret detection
+            ~/.local/bin/trivy fs \
+              --scanners secret \
+              --format json \
+              --output $(Build.ArtifactStagingDirectory)/trivy-secrets.json \
+              .
+              
+            # Custom regex patterns for additional secrets
+            echo "🔍 Custom secret pattern detection..."
+            grep -r -n -E "(password|pwd|secret|key|token|api[_-]?key)" \
+              --include="*.js" --include="*.json" --include="*.yaml" --include="*.yml" \
+              . > $(Build.ArtifactStagingDirectory)/custom-patterns.txt || true
+              
+            # Fail build if secrets found and strict mode enabled
+            if [ "$GITLEAKS_EXIT" != "0" ] && [ "$(securityScanFailBuild)" == "true" ]; then
+              echo "❌ Secrets detected and securityScanFailBuild is enabled"
+              exit 1
+            fi
+            
+      # Comprehensive vulnerability scanning
+      - task: Bash@3
+        displayName: 'Multi-Scanner Vulnerability Analysis'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "🔍 Comprehensive vulnerability scanning..."
+            
+            # Trivy filesystem scan
+            ~/.local/bin/trivy fs \
+              --severity $(vulnerabilitySeverity) \
+              --format json \
+              --output $(Build.ArtifactStagingDirectory)/trivy-fs.json \
+              .
+              
+            # Trivy configuration scan
+            ~/.local/bin/trivy config \
+              --format json \
+              --output $(Build.ArtifactStagingDirectory)/trivy-config.json \
+              .
+              
+            # Node.js dependency audit (server)
+            if [ -f "server/package.json" ]; then
+              echo "📦 Scanning server dependencies..."
+              cd server
+              npm audit --audit-level moderate --json > $(Build.ArtifactStagingDirectory)/npm-audit-server.json || true
+              cd ..
+            fi
+            
+            # Node.js dependency audit (client)
+            if [ -f "client/package.json" ]; then
+              echo "📦 Scanning client dependencies..."  
+              cd client
+              npm audit --audit-level moderate --json > $(Build.ArtifactStagingDirectory)/npm-audit-client.json || true
+              cd ..
+            fi
+            
+            # SAST scanning with Semgrep (comprehensive mode)
+            if [ "${{ parameters.securityScanLevel }}" == "comprehensive" ]; then
+              echo "🔬 SAST analysis with Semgrep..."
+              semgrep --config=auto --json --output=$(Build.ArtifactStagingDirectory)/semgrep-results.json . || true
+            fi
+            
+      # Docker security baseline (if Dockerfiles exist)
+      - task: Bash@3
+        displayName: 'Docker Security Analysis'
+        condition: or(exists('server/Dockerfile'), exists('client/Dockerfile'))
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "🐳 Docker security analysis..."
+            
+            # Scan Dockerfiles for security issues
+            if [ -f "server/Dockerfile" ]; then
+              ~/.local/bin/trivy config server/Dockerfile \
+                --format json \
+                --output $(Build.ArtifactStagingDirectory)/dockerfile-server-security.json
+            fi
+            
+            if [ -f "client/Dockerfile" ]; then
+              ~/.local/bin/trivy config client/Dockerfile \
+                --format json \
+                --output $(Build.ArtifactStagingDirectory)/dockerfile-client-security.json
+            fi
+            
+      # Kubernetes security analysis (if K8s manifests exist)
+      - task: Bash@3
+        displayName: 'Kubernetes Security Analysis'
+        condition: exists('k8s/')
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "☸️ Kubernetes security analysis..."
+            
+            # Scan Kubernetes manifests
+            ~/.local/bin/trivy config k8s/ \
+              --format json \
+              --output $(Build.ArtifactStagingDirectory)/k8s-security.json
+              
+            # Scan Helm charts
+            if [ -d "helm/" ]; then
+              ~/.local/bin/trivy config helm/ \
+                --format json \
+                --output $(Build.ArtifactStagingDirectory)/helm-security.json
+            fi
+            
+      # Generate comprehensive security report
+      - task: Bash@3
+        displayName: 'Generate Security Dashboard'
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "📊 Generating comprehensive security report..."
+            
+            # Create security dashboard
+            REPORT_FILE="$(Build.ArtifactStagingDirectory)/security-dashboard.html"
+            
+            cat > $REPORT_FILE << 'EOF'
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Security Dashboard - Build $(Build.BuildNumber)</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    .header { background: #2c3e50; color: white; padding: 20px; border-radius: 5px; }
+                    .section { margin: 20px 0; padding: 15px; border-left: 4px solid #3498db; background: #f8f9fa; }
+                    .critical { border-left-color: #e74c3c; }
+                    .warning { border-left-color: #f39c12; }
+                    .success { border-left-color: #27ae60; }
+                    pre { background: #2c3e50; color: #ecf0f1; padding: 10px; border-radius: 3px; overflow-x: auto; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>🛡️ Security Dashboard</h1>
+                    <p>Build: $(Build.BuildNumber) | Date: $(date) | Environment: ${{ parameters.environmentName }}</p>
+                </div>
+            EOF
+            
+            # Add scan results summary
+            echo '<div class="section">' >> $REPORT_FILE
+            echo '<h2>📋 Scan Summary</h2>' >> $REPORT_FILE
+            echo '<ul>' >> $REPORT_FILE
+            
+            # Count findings from various scans
+            if [ -f "$(Build.ArtifactStagingDirectory)/gitleaks-detailed.json" ]; then
+              SECRET_COUNT=$(jq length "$(Build.ArtifactStagingDirectory)/gitleaks-detailed.json" 2>/dev/null || echo "0")
+              echo "<li>Secrets detected: $SECRET_COUNT</li>" >> $REPORT_FILE
+            fi
+            
+            echo '</ul>' >> $REPORT_FILE
+            echo '</div>' >> $REPORT_FILE
+            echo '</body></html>' >> $REPORT_FILE
+            
+            echo "✅ Security dashboard generated"
+            
+      # Publish security artifacts
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Security Artifacts'
+        condition: always()
+        inputs:
+          pathToPublish: '$(Build.ArtifactStagingDirectory)'
+          artifactName: 'security-analysis-${{ parameters.environmentName }}'
+          
+      # Publish test results in JUnit format
+      - task: PublishTestResults@2
+        displayName: 'Publish Security Test Results'
+        condition: always()
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: '$(Build.ArtifactStagingDirectory)/*-junit.xml'
+          testRunTitle: 'Security Analysis Results'
+          mergeTestResults: true
+          
+      # Create work items for critical findings
+      - task: Bash@3
+        displayName: 'Create Security Work Items'
+        condition: and(always(), eq('${{ parameters.environmentName }}', 'production'))
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "📝 Creating work items for critical security findings..."
+            
+            # This would integrate with Azure DevOps REST API to create work items
+            # For now, just log the action
+            echo "Work item creation would be implemented here for critical findings"
