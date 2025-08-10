@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: blog-server
+  namespace: blog-app
+  labels:
+    app: blog-app
+    component: server
+    tier: backend
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 5000
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: blog-app
+    component: server
+  sessionAffinity: None
+
+---
+# Service cho external access nếu cần
+apiVersion: v1
+kind: Service
+metadata:
+  name: blog-server-external
+  namespace: blog-app
+  labels:
+    app: blog-app
+    component: server
+    tier: backend
+    access: external
+spec:
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+    protocol: TCP
+  selector:
+    app: blog-app
+    component: server
+  loadBalancerSourceRanges:
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16

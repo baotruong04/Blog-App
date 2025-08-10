@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blog-app-config
+  namespace: blog-app
+  labels:
+    app: blog-app
+    component: config
+data:
+  # Server Configuration
+  NODE_ENV: "production"
+  PORT: "5000"
+  
+  # Database Configuration  
+  DB_NAME: "BlogApp"
+  DB_HOST: "mongo"
+  DB_PORT: "27017"
+  
+  # Client Configuration
+  REACT_APP_API_URL: "http://blog-server:5000/api"
+  REACT_APP_ENV: "production"
+  
+  # Health Check Endpoints
+  HEALTH_CHECK_PATH: "/api/health"
+  READINESS_CHECK_PATH: "/api/ready"
+  
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blog-app-config
+  namespace: blog-app-dev
+  labels:
+    app: blog-app
+    component: config
+    environment: development
+data:
+  # Server Configuration
+  NODE_ENV: "development"
+  PORT: "5000"
+  
+  # Database Configuration  
+  DB_NAME: "BlogAppDev"
+  DB_HOST: "mongo-dev"
+  DB_PORT: "27017"
+  
+  # Client Configuration
+  REACT_APP_API_URL: "http://blog-server-dev:5000/api"
+  REACT_APP_ENV: "development"
+  
+  # Health Check Endpoints
+  HEALTH_CHECK_PATH: "/api/health"
+  READINESS_CHECK_PATH: "/api/ready"
