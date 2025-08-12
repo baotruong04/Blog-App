@@ -1,0 +1,20 @@
+{{- if .Values.client.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "blog-app.fullname" . }}-client
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: client
+spec:
+  type: {{ .Values.client.service.type }}
+  ports:
+  - port: {{ .Values.client.service.port }}
+    targetPort: {{ .Values.client.service.targetPort }}
+    protocol: TCP
+    name: http
+  selector:
+    {{- include "blog-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: client
+{{- end }}

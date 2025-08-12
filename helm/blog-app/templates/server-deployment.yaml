@@ -1,0 +1,88 @@
+{{- if .Values.server.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "blog-app.fullname" . }}-server
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.replicaCount.server }}
+  selector:
+    matchLabels:
+      {{- include "blog-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "blog-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+    spec:
+      containers:
+      - name: server
+        image: "{{ .Values.global.imageRegistry }}{{ .Values.server.image.repository }}:{{ .Values.server.image.tag }}"
+        imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.server.service.targetPort }}
+          protocol: TCP
+        
+        {{- if .Values.server.probes.startup.enabled }}
+        startupProbe:
+          httpGet:
+            path: {{ .Values.server.probes.startup.path }}
+            port: {{ .Values.server.probes.startup.port }}
+          initialDelaySeconds: {{ .Values.server.probes.startup.initialDelaySeconds }}
+          periodSeconds: {{ .Values.server.probes.startup.periodSeconds }}
+          timeoutSeconds: {{ .Values.server.probes.startup.timeoutSeconds }}
+          failureThreshold: {{ .Values.server.probes.startup.failureThreshold }}
+        {{- end }}
+        
+        {{- if .Values.server.probes.readiness.enabled }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.server.probes.readiness.path }}
+            port: {{ .Values.server.probes.readiness.port }}
+          initialDelaySeconds: {{ .Values.server.probes.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.server.probes.readiness.periodSeconds }}
+          timeoutSeconds: {{ .Values.server.probes.readiness.timeoutSeconds }}
+          failureThreshold: {{ .Values.server.probes.readiness.failureThreshold }}
+        {{- end }}
+        
+        {{- if .Values.server.probes.liveness.enabled }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.server.probes.liveness.path }}
+            port: {{ .Values.server.probes.liveness.port }}
+          initialDelaySeconds: {{ .Values.server.probes.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.server.probes.liveness.periodSeconds }}
+          timeoutSeconds: {{ .Values.server.probes.liveness.timeoutSeconds }}
+          failureThreshold: {{ .Values.server.probes.liveness.failureThreshold }}
+        {{- end }}
+        
+        env:
+        - name: NODE_ENV
+          value: {{ .Values.config.nodeEnv | quote }}
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "blog-app.fullname" . }}-secrets
+              key: mongoUri
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "blog-app.fullname" . }}-secrets
+              key: jwtSecret
+        
+        resources:
+          {{- toYaml .Values.server.resources | nindent 10 }}
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          runAsUser: 1001
+          capabilities:
+            drop:
+            - ALL
+{{- end }}

@@ -1,0 +1,134 @@
+# Default values for blog-app
+# This is a YAML-formatted file.
+
+# Global settings
+global:
+  imageRegistry: ""
+
+# Namespace
+namespace:
+  name: blog-app
+  create: true
+
+# Client (React + Nginx)
+client:
+  enabled: true
+  image:
+    repository: blog-app-client
+    tag: latest
+    pullPolicy: Always
+  
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 80
+  
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+  
+  # Health check probes
+  probes:
+    startup:
+      enabled: true
+      path: /
+      port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 6
+    
+    readiness:
+      enabled: true
+      path: /
+      port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    
+    liveness:
+      enabled: true
+      path: /
+      port: 80
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+# Server (Node.js + Express)
+server:
+  enabled: true
+  image:
+    repository: blog-app-server
+    tag: latest
+    pullPolicy: Always
+  
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+  
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  
+  # Health check probes
+  probes:
+    startup:
+      enabled: true
+      path: /
+      port: 5000
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      timeoutSeconds: 3
+      failureThreshold: 12
+    
+    readiness:
+      enabled: true
+      path: /
+      port: 5000
+      initialDelaySeconds: 10
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 3
+    
+    liveness:
+      enabled: true
+      path: /
+      port: 5000
+      initialDelaySeconds: 60
+      periodSeconds: 30
+      timeoutSeconds: 3
+      failureThreshold: 3
+
+# Configuration
+config:
+  nodeEnv: "production"
+  apiBaseUrl: "/api"
+
+# Secrets (will be created separately)
+secrets:
+  mongoUri: ""
+  jwtSecret: ""
+
+# Ingress
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  host: "blog-app.local"
+  tls: []
+
+# Replica counts
+replicaCount:
+  client: 1
+  server: 1

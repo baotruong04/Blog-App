@@ -1,0 +1,80 @@
+{{- if .Values.client.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "blog-app.fullname" . }}-client
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: client
+spec:
+  replicas: {{ .Values.replicaCount.client }}
+  selector:
+    matchLabels:
+      {{- include "blog-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: client
+  template:
+    metadata:
+      labels:
+        {{- include "blog-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: client
+    spec:
+      containers:
+      - name: client
+        image: "{{ .Values.global.imageRegistry }}{{ .Values.client.image.repository }}:{{ .Values.client.image.tag }}"
+        imagePullPolicy: {{ .Values.client.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.client.service.targetPort }}
+          protocol: TCP
+        
+        {{- if .Values.client.probes.startup.enabled }}
+        startupProbe:
+          httpGet:
+            path: {{ .Values.client.probes.startup.path }}
+            port: {{ .Values.client.probes.startup.port }}
+          initialDelaySeconds: {{ .Values.client.probes.startup.initialDelaySeconds }}
+          periodSeconds: {{ .Values.client.probes.startup.periodSeconds }}
+          timeoutSeconds: {{ .Values.client.probes.startup.timeoutSeconds }}
+          failureThreshold: {{ .Values.client.probes.startup.failureThreshold }}
+        {{- end }}
+        
+        {{- if .Values.client.probes.readiness.enabled }}
+        readinessProbe:
+          httpGet:
+            path: {{ .Values.client.probes.readiness.path }}
+            port: {{ .Values.client.probes.readiness.port }}
+          initialDelaySeconds: {{ .Values.client.probes.readiness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.client.probes.readiness.periodSeconds }}
+          timeoutSeconds: {{ .Values.client.probes.readiness.timeoutSeconds }}
+          failureThreshold: {{ .Values.client.probes.readiness.failureThreshold }}
+        {{- end }}
+        
+        {{- if .Values.client.probes.liveness.enabled }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.client.probes.liveness.path }}
+            port: {{ .Values.client.probes.liveness.port }}
+          initialDelaySeconds: {{ .Values.client.probes.liveness.initialDelaySeconds }}
+          periodSeconds: {{ .Values.client.probes.liveness.periodSeconds }}
+          timeoutSeconds: {{ .Values.client.probes.liveness.timeoutSeconds }}
+          failureThreshold: {{ .Values.client.probes.liveness.failureThreshold }}
+        {{- end }}
+        
+        env:
+        - name: NODE_ENV
+          value: {{ .Values.config.nodeEnv | quote }}
+        - name: API_BASE_URL
+          value: {{ .Values.config.apiBaseUrl | quote }}
+        
+        resources:
+          {{- toYaml .Values.client.resources | nindent 10 }}
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+{{- end }}
