@@ -1,0 +1,58 @@
+{{/*
+Test to verify services are properly configured and accessible
+*/}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "blog-app.fullname" . }}-test-services"
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "3"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test-services
+    image: busybox:1.28
+    command: ['sh', '-c']
+    args:
+    - |
+      set -e
+      echo "Testing services..."
+      
+      # Check if client service exists
+      kubectl get service {{ include "blog-app.fullname" . }}-client -n {{ .Values.namespace.name }}
+      echo "✓ Client service exists"
+      
+      # Check if server service exists  
+      kubectl get service {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }}
+      echo "✓ Server service exists"
+      
+      # Check client service port
+      kubectl get service {{ include "blog-app.fullname" . }}-client -n {{ .Values.namespace.name }} -o jsonpath='{.spec.ports[0].port}' | grep -q "{{ .Values.client.service.port }}"
+      echo "✓ Client service has correct port"
+      
+      # Check server service port
+      kubectl get service {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }} -o jsonpath='{.spec.ports[0].port}' | grep -q "{{ .Values.server.service.port }}"
+      echo "✓ Server service has correct port"
+      
+      # Check service selectors
+      kubectl get service {{ include "blog-app.fullname" . }}-client -n {{ .Values.namespace.name }} -o jsonpath='{.spec.selector.app\.kubernetes\.io/component}' | grep -q "client"
+      echo "✓ Client service has correct selector"
+      
+      kubectl get service {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }} -o jsonpath='{.spec.selector.app\.kubernetes\.io/component}' | grep -q "server"
+      echo "✓ Server service has correct selector"
+      
+      echo "Services test PASSED!"
+    volumeMounts:
+    - name: kubectl-config
+      mountPath: /root/.kube
+      readOnly: true
+  volumes:
+  - name: kubectl-config
+    secret:
+      secretName: kubectl-config
+      optional: true

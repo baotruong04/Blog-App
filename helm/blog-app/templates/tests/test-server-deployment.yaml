@@ -1,0 +1,61 @@
+{{/*
+Test to verify the server deployment renders correctly
+*/}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "blog-app.fullname" . }}-test-server-deployment"
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "2"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test-server-deployment
+    image: busybox:1.28
+    command: ['sh', '-c']
+    args:
+    - |
+      set -e
+      echo "Testing server deployment..."
+      
+      # Check if server deployment exists
+      kubectl get deployment {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }}
+      echo "✓ Server deployment exists"
+      
+      # Check deployment has correct labels
+      kubectl get deployment {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }} -o jsonpath='{.metadata.labels.app\.kubernetes\.io/component}' | grep -q "server"
+      echo "✓ Server deployment has correct component label"
+      
+      # Check deployment has correct image
+      kubectl get deployment {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }} -o jsonpath='{.spec.template.spec.containers[0].image}' | grep -q "{{ .Values.server.image.repository }}"
+      echo "✓ Server deployment has correct image"
+      
+      # Check deployment has health probes
+      kubectl get deployment {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }} -o jsonpath='{.spec.template.spec.containers[0].startupProbe}' | grep -q "httpGet"
+      echo "✓ Server deployment has startup probe"
+      
+      kubectl get deployment {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }} -o jsonpath='{.spec.template.spec.containers[0].readinessProbe}' | grep -q "httpGet"
+      echo "✓ Server deployment has readiness probe"
+      
+      kubectl get deployment {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }} -o jsonpath='{.spec.template.spec.containers[0].livenessProbe}' | grep -q "httpGet"
+      echo "✓ Server deployment has liveness probe"
+      
+      # Check environment variables from secrets
+      kubectl get deployment {{ include "blog-app.fullname" . }}-server -n {{ .Values.namespace.name }} -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="MONGO_URI")].valueFrom.secretKeyRef.name}' | grep -q "{{ include "blog-app.fullname" . }}-secrets"
+      echo "✓ Server deployment has MONGO_URI from secrets"
+      
+      echo "Server deployment test PASSED!"
+    volumeMounts:
+    - name: kubectl-config
+      mountPath: /root/.kube
+      readOnly: true
+  volumes:
+  - name: kubectl-config
+    secret:
+      secretName: kubectl-config
+      optional: true

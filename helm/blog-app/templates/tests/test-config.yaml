@@ -1,0 +1,57 @@
+{{/*
+Test to verify configuration and secrets are properly set
+*/}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "blog-app.fullname" . }}-test-config"
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    {{- include "blog-app.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-weight": "4"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  containers:
+  - name: test-config
+    image: busybox:1.28
+    command: ['sh', '-c']
+    args:
+    - |
+      set -e
+      echo "Testing configuration and secrets..."
+      
+      # Check if configmap exists
+      kubectl get configmap {{ include "blog-app.fullname" . }}-config -n {{ .Values.namespace.name }}
+      echo "✓ ConfigMap exists"
+      
+      # Check if secrets exist
+      kubectl get secret {{ include "blog-app.fullname" . }}-secrets -n {{ .Values.namespace.name }}
+      echo "✓ Secret exists"
+      
+      # Check configmap data
+      kubectl get configmap {{ include "blog-app.fullname" . }}-config -n {{ .Values.namespace.name }} -o jsonpath='{.data.NODE_ENV}' | grep -q "{{ .Values.config.nodeEnv }}"
+      echo "✓ ConfigMap has correct NODE_ENV"
+      
+      kubectl get configmap {{ include "blog-app.fullname" . }}-config -n {{ .Values.namespace.name }} -o jsonpath='{.data.API_BASE_URL}' | grep -q "{{ .Values.config.apiBaseUrl }}"
+      echo "✓ ConfigMap has correct API_BASE_URL"
+      
+      # Check secrets exist (without revealing values)
+      kubectl get secret {{ include "blog-app.fullname" . }}-secrets -n {{ .Values.namespace.name }} -o jsonpath='{.data.mongoUri}' | grep -q "."
+      echo "✓ Secret has mongoUri"
+      
+      kubectl get secret {{ include "blog-app.fullname" . }}-secrets -n {{ .Values.namespace.name }} -o jsonpath='{.data.jwtSecret}' | grep -q "."
+      echo "✓ Secret has jwtSecret"
+      
+      echo "Configuration test PASSED!"
+    volumeMounts:
+    - name: kubectl-config
+      mountPath: /root/.kube
+      readOnly: true
+  volumes:
+  - name: kubectl-config
+    secret:
+      secretName: kubectl-config
+      optional: true
